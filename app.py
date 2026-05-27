@@ -23,6 +23,7 @@ from gold_advisor.data import (
 )
 from gold_advisor.market import (
     LondonGoldConversion,
+    convert_cny_per_gram_to_london_gold,
     convert_london_gold_to_cny_per_gram,
     get_london_gold_conversion,
 )
@@ -75,11 +76,6 @@ with st.sidebar:
     source = {"演示数据": "demo", "AKShare/上金所": "akshare", "CSV": "csv"}[source_label]
     symbol = st.text_input("上金所品种", value="Au99.99")
     use_delayed_quote = st.checkbox("使用上金所延时价更新当日", value=source == "akshare", disabled=source != "akshare")
-    manual_quote_enabled = st.checkbox("手动填入银行积存金价")
-    manual_quote = st.number_input("银行价(元/克)", min_value=0.0, value=0.0, step=0.1, disabled=not manual_quote_enabled)
-    manual_london_enabled = st.checkbox("手动填入伦敦金/汇率")
-    manual_gold_usd = st.number_input("XAU/USD(美元/盎司)", min_value=0.0, value=0.0, step=1.0, disabled=not manual_london_enabled)
-    manual_usd_cny = st.number_input("USD/CNY", min_value=0.0, value=0.0, step=0.001, format="%.4f", disabled=not manual_london_enabled)
     refresh_label = st.selectbox("自动刷新", ["关闭", "30 秒", "1 分钟", "5 分钟", "15 分钟"], index=2)
     refresh_seconds = {"关闭": None, "30 秒": 30, "1 分钟": 60, "5 分钟": 300, "15 分钟": 900}[refresh_label]
     if st.button("刷新数据", use_container_width=True):
@@ -117,37 +113,13 @@ def render_dashboard() -> None:
         except Exception as exc:
             quote_note = f"上金所延时行情暂不可用，仍使用历史日线收盘价。原因：{exc}"
 
-    if manual_quote_enabled and manual_quote > 0:
-        manual = SgeDelayedQuote(
-            symbol="银行积存金手动价",
-            last=float(manual_quote),
-            high=float(manual_quote),
-            low=float(manual_quote),
-            open=float(manual_quote),
-            quote_date=prices["date"].iloc[-1],
-            source="手动输入",
-        )
-        prices = apply_latest_quote(prices, manual)
-        quote_note = f"当前价格已按手动银行积存金价 {manual_quote:.2f} 元/克校准。"
-
     london_conversion: LondonGoldConversion | None = None
     london_note = "伦敦金折算价暂不可用。"
-    if manual_london_enabled and manual_gold_usd > 0 and manual_usd_cny > 0:
-        london_conversion = LondonGoldConversion(
-            gold_usd_per_oz=float(manual_gold_usd),
-            usd_cny=float(manual_usd_cny),
-            cny_per_gram=convert_london_gold_to_cny_per_gram(float(manual_gold_usd), float(manual_usd_cny)),
-            gold_quote_time=None,
-            fx_quote_time=None,
-            source="手动输入",
-        )
-        london_note = "伦敦金折算价来自手动输入。"
-    elif not manual_london_enabled:
-        try:
-            london_conversion = cached_london_conversion(data_refresh_key)
-            london_note = f"伦敦金折算价来自 {london_conversion.source}。"
-        except Exception as exc:
-            london_note = f"伦敦金接口暂不可用，可改用手动输入。原因：{exc}"
+    try:
+        london_conversion = cached_london_conversion(data_refresh_key)
+        london_note = f"伦敦金折算价来自 {london_conversion.source}。"
+    except Exception as exc:
+        london_note = f"伦敦金接口暂不可用。原因：{exc}"
 
     config = StrategyConfig(
         fast_window=fast_window,
@@ -191,6 +163,41 @@ def render_dashboard() -> None:
             {"项目": "国内溢价率", "数值": pct(premium) if premium is not None else "-"},
         ]
         st.dataframe(pd.DataFrame(conversion_rows), hide_index=True, use_container_width=True)
+
+        with st.expander("伦敦金 / 国内金换算工具"):
+            tool_mode = st.radio("方向", ["伦敦金 -> 元/克", "元/克 -> 伦敦金"], horizontal=True)
+            tool_cols = st.columns(3)
+            fx_for_tool = tool_cols[0].number_input(
+                "USD/CNY",
+                min_value=0.0001,
+                value=float(london_conversion.usd_cny),
+                step=0.001,
+                format="%.4f",
+                key="converter_usd_cny",
+            )
+            if tool_mode == "伦敦金 -> 元/克":
+                tool_gold_usd = tool_cols[1].number_input(
+                    "XAU/USD(美元/盎司)",
+                    min_value=0.01,
+                    value=float(london_conversion.gold_usd_per_oz),
+                    step=1.0,
+                    format="%.2f",
+                    key="converter_xauusd",
+                )
+                converted_price = convert_london_gold_to_cny_per_gram(tool_gold_usd, fx_for_tool)
+                tool_cols[2].metric("折合元/克", f"{converted_price:.2f}")
+            else:
+                tool_cny_price = tool_cols[1].number_input(
+                    "国内/银行金(元/克)",
+                    min_value=0.01,
+                    value=float(domestic_price),
+                    step=0.1,
+                    format="%.2f",
+                    key="converter_cny_g",
+                )
+                converted_gold = convert_cny_per_gram_to_london_gold(tool_cny_price, fx_for_tool)
+                tool_cols[2].metric("折合XAU/USD", f"{converted_gold:.2f}")
+            st.caption("换算工具只做单位和汇率换算，不会覆盖策略使用的行情数据。银行实际买卖价仍以银行 App 报价为准。")
 
     price_fig = go.Figure()
     price_fig.add_trace(go.Scatter(x=strategy_equity["date"], y=strategy_equity["close"], name="价格", line=dict(color="#1f2937", width=1.8)))

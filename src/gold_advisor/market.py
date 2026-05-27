@@ -38,6 +38,14 @@ def convert_london_gold_to_cny_per_gram(gold_usd_per_oz: float, usd_cny: float) 
     return gold_usd_per_oz * usd_cny / TROY_OUNCE_GRAMS
 
 
+def convert_cny_per_gram_to_london_gold(cny_per_gram: float, usd_cny: float) -> float:
+    if cny_per_gram <= 0:
+        raise ValueError("人民币/克价格必须大于 0。")
+    if usd_cny <= 0:
+        raise ValueError("美元兑人民币汇率必须大于 0。")
+    return cny_per_gram * TROY_OUNCE_GRAMS / usd_cny
+
+
 def get_stooq_quote(symbol: str, currency: str, unit: str) -> MarketQuote:
     import requests
 

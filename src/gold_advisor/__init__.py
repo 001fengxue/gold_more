@@ -4,5 +4,6 @@ __all__ = [
     "backtest",
     "data",
     "indicators",
+    "market",
     "strategy",
 ]

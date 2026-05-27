@@ -15,7 +15,7 @@ Python 业务层
     v
 数据源
     |
-    | AKShare 历史日线、上金所延时行情、CSV、演示数据
+    | AKShare 历史日线、上金所延时行情、Stooq XAU/USD 与 USD/CNY、CSV、演示数据
 ```
 
 ## 前端
@@ -32,11 +32,13 @@ Python 业务层
 - 数据处理使用 `pandas` 和 `numpy`。
 - 上金所历史数据通过 `AKShare` 获取。
 - 上金所延时行情通过官方 H5 页面解析，用于修正当日参考价。
+- 伦敦金换算通过 Stooq CSV 接口获取 `XAUUSD` 与 `USDCNY`，再按美元/盎司折算成人民币/克。
 - 回测逻辑在本项目内实现，便于贴合积存金的买卖价差、仓位和分批调仓。
 
 核心模块：
 
 - `src/gold_advisor/data.py`：数据读取、清洗、上金所延时价、手动价格覆盖。
+- `src/gold_advisor/market.py`：伦敦金、美元兑人民币和人民币/克折算。
 - `src/gold_advisor/indicators.py`：均线、RSI、回撤、波动率。
 - `src/gold_advisor/strategy.py`：信号和目标仓位规则。
 - `src/gold_advisor/backtest.py`：交易模拟、资金曲线、收益和回撤指标。
@@ -47,8 +49,22 @@ Python 业务层
 
 - 历史日线：用于回测，来自 AKShare 的上金所历史行情。
 - 当前参考价：用于页面最新展示，优先使用上金所官方延时行情；也可以手动输入银行积存金报价。
+- 伦敦金折算价：使用 `XAU/USD * USD/CNY / 31.1034768` 计算为人民币/克。
 
 银行积存金价格不是统一交易所价格。不同银行会在参考金价基础上加入自己的买卖价差、手续费或报价规则，所以页面提供“手动填入银行积存金价”用于贴近你实际看到的银行报价。
+
+伦敦金并不是直接的人民币积存金价格。LBMA Gold Price 是伦敦交割黄金的国际基准价，单位通常是美元/金衡盎司；上金所 Au99.99 的报价单位是元/克；银行积存金又会在参考价格基础上加入银行自己的报价规则。
+
+## 行情接口位置
+
+当前 MVP 使用接口，但会保留手动输入作为兜底：
+
+- 国内历史日线：`src/gold_advisor/data.py` 的 `load_sge_prices()`，通过 AKShare 调用上金所历史行情。
+- 国内延时价：`src/gold_advisor/data.py` 的 `get_sge_delayed_quote()`，解析上海黄金交易所官方延时行情页面。
+- 伦敦金与汇率：`src/gold_advisor/market.py` 的 `get_london_gold_conversion()`，调用 `get_stooq_quote("xauusd")` 和 `get_stooq_quote("usdcny")`。
+- 换算公式：`src/gold_advisor/market.py` 的 `convert_london_gold_to_cny_per_gram()`，公式为 `XAU/USD * USD/CNY / 31.1034768`。
+
+Stooq 是第一版免 key 数据源，适合验证产品形态。生产级系统应替换为授权市场数据源；LBMA Gold Price 的实时或延时分发通常涉及 ICE/LBMA 授权，汇率也应使用银行、交易所、数据商或央行/外汇交易中心的正式数据。
 
 ## 为什么价格不会实时跳动
 
@@ -57,6 +73,7 @@ Python 业务层
 - AKShare 历史行情通常是日线数据，不是秒级实时数据。
 - 上金所官方页面是延时行情，不是交易所直连实时行情。
 - Streamlit 使用缓存减少重复请求，现在历史数据缓存 15 分钟，延时行情缓存 5 分钟。
+- 伦敦金和 USD/CNY 折算数据缓存 5 分钟。
 - 页面新增了“刷新数据”按钮，可以主动清缓存重新抓取。
 
 如果后续需要实时跳动，需要接入稳定的实时行情接口，或者使用券商、银行、交易所授权行情源。

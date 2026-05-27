@@ -20,6 +20,11 @@ from gold_advisor.data import (
     load_csv_prices,
     load_prices,
 )
+from gold_advisor.market import (
+    LondonGoldConversion,
+    convert_london_gold_to_cny_per_gram,
+    get_london_gold_conversion,
+)
 from gold_advisor.strategy import StrategyConfig
 
 
@@ -42,6 +47,11 @@ def cached_delayed_quote(symbol: str) -> SgeDelayedQuote:
     return get_sge_delayed_quote(symbol)
 
 
+@st.cache_data(show_spinner=False, ttl=300)
+def cached_london_conversion() -> LondonGoldConversion:
+    return get_london_gold_conversion()
+
+
 def pct(value: float) -> str:
     return f"{value * 100:.2f}%"
 
@@ -58,6 +68,9 @@ with st.sidebar:
     use_delayed_quote = st.checkbox("使用上金所延时价更新当日", value=source == "akshare", disabled=source != "akshare")
     manual_quote_enabled = st.checkbox("手动填入银行积存金价")
     manual_quote = st.number_input("银行价(元/克)", min_value=0.0, value=0.0, step=0.1, disabled=not manual_quote_enabled)
+    manual_london_enabled = st.checkbox("手动填入伦敦金/汇率")
+    manual_gold_usd = st.number_input("XAU/USD(美元/盎司)", min_value=0.0, value=0.0, step=1.0, disabled=not manual_london_enabled)
+    manual_usd_cny = st.number_input("USD/CNY", min_value=0.0, value=0.0, step=0.001, format="%.4f", disabled=not manual_london_enabled)
     if st.button("刷新数据", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
@@ -102,6 +115,25 @@ if manual_quote_enabled and manual_quote > 0:
     prices = apply_latest_quote(prices, manual)
     quote_note = f"当前价格已按手动银行积存金价 {manual_quote:.2f} 元/克校准。"
 
+london_conversion: LondonGoldConversion | None = None
+london_note = "伦敦金折算价暂不可用。"
+if manual_london_enabled and manual_gold_usd > 0 and manual_usd_cny > 0:
+    london_conversion = LondonGoldConversion(
+        gold_usd_per_oz=float(manual_gold_usd),
+        usd_cny=float(manual_usd_cny),
+        cny_per_gram=convert_london_gold_to_cny_per_gram(float(manual_gold_usd), float(manual_usd_cny)),
+        gold_quote_time=None,
+        fx_quote_time=None,
+        source="手动输入",
+    )
+    london_note = "伦敦金折算价来自手动输入。"
+elif not manual_london_enabled:
+    try:
+        london_conversion = cached_london_conversion()
+        london_note = f"伦敦金折算价来自 {london_conversion.source}。"
+    except Exception as exc:
+        london_note = f"伦敦金接口暂不可用，可改用手动输入。原因：{exc}"
+
 config = StrategyConfig(
     fast_window=fast_window,
     slow_window=slow_window,
@@ -114,15 +146,32 @@ strategy_equity, trades, metrics = run_strategy_backtest(prices, config, initial
 benchmark = run_buy_hold_benchmark(prices, spread_bps=spread_bps, initial_cash=float(initial_cash))
 comparison = compare_metrics(strategy_equity, benchmark)
 latest = strategy_equity.iloc[-1]
+domestic_price = float(latest["close"])
+london_price = london_conversion.cny_per_gram if london_conversion is not None else None
+premium = domestic_price / london_price - 1 if london_price and london_price > 0 else None
 
-top = st.columns([1, 1.15, 0.9, 1.1, 1])
-top[0].metric("金价(元/克)", f"{latest['close']:.2f}")
-top[1].metric("当前信号", str(latest["signal"]))
-top[2].metric("目标仓位", f"{latest['target_position'] * 100:.0f}%")
-top[3].metric("策略累计收益", pct(metric_value(comparison, "累计收益", "strategy")))
-top[4].metric("最大回撤", pct(metric_value(comparison, "最大回撤", "strategy")))
+market_cols = st.columns(3)
+market_cols[0].metric("国内价(元/克)", f"{domestic_price:.2f}")
+market_cols[1].metric("伦敦折算", f"{london_price:.2f}" if london_price is not None else "-")
+market_cols[2].metric("国内溢价", pct(premium) if premium is not None else "-")
 
-st.caption(f"数据源：{info.name}，区间：{prices['date'].iloc[0].date()} 至 {prices['date'].iloc[-1].date()}。{quote_note} 本系统只用于研究和记录，不构成投资建议。")
+signal_cols = st.columns(4)
+signal_cols[0].metric("当前信号", str(latest["signal"]))
+signal_cols[1].metric("目标仓位", f"{latest['target_position'] * 100:.0f}%")
+signal_cols[2].metric("策略累计收益", pct(metric_value(comparison, "累计收益", "strategy")))
+signal_cols[3].metric("最大回撤", pct(metric_value(comparison, "最大回撤", "strategy")))
+
+st.caption(f"数据源：{info.name}，区间：{prices['date'].iloc[0].date()} 至 {prices['date'].iloc[-1].date()}。{quote_note} {london_note} 本系统只用于研究和记录，不构成投资建议。")
+
+if london_conversion is not None:
+    conversion_rows = [
+        {"项目": "XAU/USD", "数值": f"{london_conversion.gold_usd_per_oz:.2f} 美元/盎司"},
+        {"项目": "USD/CNY", "数值": f"{london_conversion.usd_cny:.4f}"},
+        {"项目": "伦敦折人民币", "数值": f"{london_conversion.cny_per_gram:.2f} 元/克"},
+        {"项目": "国内价差", "数值": f"{domestic_price - london_conversion.cny_per_gram:.2f} 元/克"},
+        {"项目": "国内溢价率", "数值": pct(premium) if premium is not None else "-"},
+    ]
+    st.dataframe(pd.DataFrame(conversion_rows), hide_index=True, use_container_width=True)
 
 price_fig = go.Figure()
 price_fig.add_trace(go.Scatter(x=strategy_equity["date"], y=strategy_equity["close"], name="价格", line=dict(color="#1f2937", width=1.8)))

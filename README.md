@@ -38,3 +38,5 @@ python scripts\run_backtest.py --source akshare --symbol Au99.99
 ## 技术栈与价格口径
 
 技术栈、数据口径和“为什么价格不会实时跳动”的说明见 [docs/TECH_STACK.md](docs/TECH_STACK.md)。
+
+系统使用方法和名词解释见 [docs/USER_GUIDE.md](docs/USER_GUIDE.md)。

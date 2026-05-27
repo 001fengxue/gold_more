@@ -22,6 +22,7 @@ streamlit run app.py
 ```powershell
 python scripts\run_backtest.py --source demo
 python scripts\run_backtest.py --source akshare --symbol Au99.99
+python scripts\run_model_evaluation.py --source akshare --symbol Au99.99
 ```
 
 ## 当前策略
@@ -34,6 +35,8 @@ python scripts\run_backtest.py --source akshare --symbol Au99.99
 - 风控：通过目标仓位、调仓阈值和买卖价差模拟真实交易摩擦。
 
 后续可以加入宏观因子、参数寻优、滚动样本外测试和模型预测，但需要先把“回测是否可信”立住。
+
+页面已经加入国内金价 K 线、模拟买卖点、伦敦金外部实时图、信号事后验证和参数组合试跑。
 
 ## 技术栈与价格口径
 

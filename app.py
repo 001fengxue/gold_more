@@ -96,7 +96,7 @@ def format_percent_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFr
     return result
 
 
-def render_tradingview_widget(symbol: str, height: int = 560) -> None:
+def render_tradingview_widget(symbol: str, height: int = 760) -> None:
     config = {
         "autosize": True,
         "symbol": symbol,
@@ -111,7 +111,7 @@ def render_tradingview_widget(symbol: str, height: int = 560) -> None:
     }
     html = f"""
     <div class="tradingview-widget-container" style="height:{height}px;width:100%">
-      <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
+      <div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
       {json.dumps(config, ensure_ascii=False)}
       </script>
@@ -355,7 +355,8 @@ def render_dashboard() -> None:
                 options=list(live_symbol_options.keys()),
                 format_func=lambda value: live_symbol_options[value],
             )
-            render_tradingview_widget(live_symbol)
+            live_chart_height = st.slider("实时图高度", min_value=560, max_value=980, value=760, step=20)
+            render_tradingview_widget(live_symbol, height=live_chart_height)
             st.caption("外部实时图由 TradingView Widget 加载，和策略回测使用的数据源分开。国内银行积存金实际买卖价仍以银行 App 为准。")
         else:
             st.info("已在侧边栏关闭伦敦金实时图。")

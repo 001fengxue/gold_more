@@ -22,7 +22,7 @@ Python 业务层
 
 - 使用 `Streamlit`。
 - 国内价格、资金曲线和 K 线图使用 `Plotly`。
-- 伦敦金实时图使用 TradingView 外部图表组件嵌入。
+- 伦敦金实时图使用 TradingView 外部图表组件嵌入；它由浏览器加载第三方图表脚本，不进入 Python 后端的数据计算链路。
 - 交互控件包括数据源选择、资金输入、价差、均线窗口、回撤阈值、调仓阈值、刷新按钮、自动刷新和伦敦金/国内金换算工具。
 
 选择 Streamlit 的原因是开发快、适合数据看板和策略研究。它不是传统前后端分离架构，但可以在很短时间内把数据、策略和图表串起来。
@@ -65,7 +65,7 @@ Python 业务层
 - 国内延时价：`src/gold_advisor/data.py` 的 `get_sge_delayed_quote()`，解析上海黄金交易所官方延时行情页面。
 - 伦敦金与汇率：`src/gold_advisor/market.py` 的 `get_london_gold_conversion()`，调用 `get_stooq_quote("xauusd")` 和 `get_stooq_quote("usdcny")`。
 - 换算公式：`src/gold_advisor/market.py` 的 `convert_london_gold_to_cny_per_gram()`，公式为 `XAU/USD * USD/CNY / 31.1034768`。
-- 外部实时图：`app.py` 的 `render_tradingview_widget()`，通过 TradingView 嵌入组件加载图表。该图表只负责展示，不作为回测和信号计算的数据源。
+- 外部实时图：`app.py` 的 `render_tradingview_widget()`，通过 TradingView 嵌入组件加载图表。页面会请求 `https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js`，后续行情由 TradingView 组件在浏览器内展示。该图表只负责展示，不作为回测和信号计算的数据源。
 
 Stooq 是第一版免 key 数据源，适合验证产品形态。生产级系统应替换为授权市场数据源；LBMA Gold Price 的实时或延时分发通常涉及 ICE/LBMA 授权，汇率也应使用银行、交易所、数据商或央行/外汇交易中心的正式数据。
 

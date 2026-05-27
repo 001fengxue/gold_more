@@ -1,0 +1,10 @@
+.venv/
+.idea/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.streamlit/
+data/*.csv
+!data/.gitkeep
+reports/
+*.log

@@ -43,7 +43,7 @@ Python 业务层
 - `src/gold_advisor/indicators.py`：均线、RSI、回撤、波动率。
 - `src/gold_advisor/strategy.py`：信号和目标仓位规则。
 - `src/gold_advisor/backtest.py`：交易模拟、资金曲线、收益和回撤指标。
-- `src/gold_advisor/evaluation.py`：信号事后验证和参数组合试跑。
+- `src/gold_advisor/evaluation.py`：信号事后验证和参数组合试跑；参数组合试跑由页面按钮手动触发，避免首屏加载时长时间等待。
 
 ## 数据口径
 

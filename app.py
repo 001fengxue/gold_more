@@ -107,17 +107,35 @@ def render_tradingview_widget(symbol: str, height: int = 760) -> None:
         "locale": "zh_CN",
         "allow_symbol_change": True,
         "calendar": False,
+        "height": height,
         "support_host": "https://www.tradingview.com",
     }
     html = f"""
-    <div class="tradingview-widget-container" style="height:{height}px;width:100%">
-      <div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>
+    <style>
+      html, body {{
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }}
+      .tradingview-widget-container {{
+        height: {height}px;
+        min-height: {height}px;
+        width: 100%;
+      }}
+      .tradingview-widget-container__widget {{
+        height: 100%;
+        min-height: {height}px;
+        width: 100%;
+      }}
+    </style>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
       {json.dumps(config, ensure_ascii=False)}
       </script>
     </div>
     """
-    components.html(html, height=height + 20)
+    components.html(html, height=height + 32, scrolling=False)
 
 
 def build_kline_figure(prices: pd.DataFrame, strategy_equity: pd.DataFrame, trades: pd.DataFrame) -> go.Figure:
@@ -194,7 +212,7 @@ with st.sidebar:
     refresh_label = st.selectbox("自动刷新", ["关闭", "30 秒", "1 分钟", "5 分钟", "15 分钟"], index=2)
     refresh_seconds = {"关闭": None, "30 秒": 30, "1 分钟": 60, "5 分钟": 300, "15 分钟": 900}[refresh_label]
     show_external_live_chart = st.checkbox("显示伦敦金实时图", value=True)
-    if st.button("刷新数据", use_container_width=True):
+    if st.button("刷新数据", width="stretch"):
         st.cache_data.clear()
         st.rerun()
     csv_file = st.file_uploader("CSV", type=["csv"]) if source == "csv" else None
@@ -249,7 +267,6 @@ def render_dashboard() -> None:
     benchmark = run_buy_hold_benchmark(prices, spread_bps=spread_bps, initial_cash=float(initial_cash))
     comparison = compare_metrics(strategy_equity, benchmark)
     signal_events, signal_summary = cached_forward_evaluation(prices, config)
-    parameter_grid = cached_parameter_grid(prices, config, float(initial_cash))
 
     latest = strategy_equity.iloc[-1]
     domestic_price = float(latest["close"])
@@ -284,7 +301,7 @@ def render_dashboard() -> None:
                 {"项目": "国内价差", "数值": f"{domestic_price - london_conversion.cny_per_gram:.2f} 元/克"},
                 {"项目": "国内溢价率", "数值": pct(premium) if premium is not None else "-"},
             ]
-            st.dataframe(pd.DataFrame(conversion_rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(conversion_rows), hide_index=True, width="stretch")
 
             with st.expander("伦敦金 / 国内金换算工具"):
                 tool_mode = st.radio("方向", ["伦敦金 -> 元/克", "元/克 -> 伦敦金"], horizontal=True)
@@ -327,7 +344,7 @@ def render_dashboard() -> None:
             equity_fig.add_trace(go.Scatter(x=strategy_equity["date"], y=strategy_equity["equity"], name="策略", line=dict(color="#059669", width=1.8)))
             equity_fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["equity"], name="买入持有", line=dict(color="#6b7280", width=1.4)))
             equity_fig.update_layout(height=360, margin=dict(l=10, r=10, t=35, b=10), title="资金曲线", hovermode="x unified")
-            st.plotly_chart(equity_fig, use_container_width=True)
+            st.plotly_chart(equity_fig, width="stretch")
 
         with right:
             position_fig = go.Figure()
@@ -335,13 +352,13 @@ def render_dashboard() -> None:
             position_fig.add_trace(go.Scatter(x=strategy_equity["date"], y=strategy_equity["target_position"], name="目标仓位", line=dict(color="#dc2626", width=1)))
             position_fig.update_yaxes(tickformat=".0%")
             position_fig.update_layout(height=360, margin=dict(l=10, r=10, t=35, b=10), title="仓位", hovermode="x unified")
-            st.plotly_chart(position_fig, use_container_width=True)
+            st.plotly_chart(position_fig, width="stretch")
 
     with chart_tab:
         chart_mode = st.radio("图表", ["国内K线", "伦敦金实时图"], horizontal=True)
         if chart_mode == "国内K线":
-            st.plotly_chart(build_kline_figure(prices, strategy_equity, trades), use_container_width=True)
-            st.plotly_chart(build_price_figure(strategy_equity, fast_window, slow_window), use_container_width=True)
+            st.plotly_chart(build_kline_figure(prices, strategy_equity, trades), width="stretch")
+            st.plotly_chart(build_price_figure(strategy_equity, fast_window, slow_window), width="stretch")
             st.caption("国内图表使用上金所历史日线和延时价，不是秒级 tick 行情。")
         elif show_external_live_chart:
             live_symbol_options = {
@@ -373,7 +390,7 @@ def render_dashboard() -> None:
         table_left, table_right = st.columns([0.85, 1.15])
         with table_left:
             st.subheader("回测指标")
-            st.dataframe(metrics_table, hide_index=True, use_container_width=True)
+            st.dataframe(metrics_table, hide_index=True, width="stretch")
 
         with table_right:
             st.subheader("当前判断")
@@ -382,12 +399,14 @@ def render_dashboard() -> None:
                 [
                     {"因子": "RSI", "数值": f"{latest['rsi']:.1f}"},
                     {"因子": "阶段回撤", "数值": pct(float(latest["pullback"]))},
+                    {"因子": "近5日动量", "数值": pct(float(latest["momentum_5d"])) if pd.notna(latest["momentum_5d"]) else "-"},
+                    {"因子": "短均线5日斜率", "数值": pct(float(latest["ma_fast_slope_5d"])) if pd.notna(latest["ma_fast_slope_5d"]) else "-"},
                     {"因子": "年化波动", "数值": pct(float(latest["volatility"])) if pd.notna(latest["volatility"]) else "-"},
                     {"因子": "持仓克数", "数值": f"{latest['grams']:.2f} 克"},
                     {"因子": "剩余现金", "数值": f"{latest['cash']:.2f} 元"},
                 ]
             )
-            st.dataframe(latest_factors, hide_index=True, use_container_width=True)
+            st.dataframe(latest_factors, hide_index=True, width="stretch")
 
         st.subheader("信号事后验证")
         if signal_summary.empty:
@@ -410,58 +429,79 @@ def render_dashboard() -> None:
                 }
             )
             signal_display = format_percent_columns(signal_display, ["平均收益", "中位收益", "上涨胜率", "最好", "最差"])
-            st.dataframe(signal_display, hide_index=True, use_container_width=True)
+            st.dataframe(signal_display, hide_index=True, width="stretch")
             st.caption("这里的验证方式是：在某一天只使用当天及以前数据生成信号，再观察之后 1日、1周、1月、1季 的价格变化。")
 
         st.subheader("参数组合试跑")
-        if parameter_grid.empty:
-            st.info("当前参数范围没有可用组合。")
+        run_grid_search = st.button("运行参数组合试跑", width="stretch")
+        if not run_grid_search:
+            st.info("参数组合试跑比较耗时，点击按钮后再运行，避免打开页面时长时间空白。")
         else:
-            grid_display = parameter_grid.head(12).copy()
-            grid_display = grid_display.rename(
-                columns={
-                    "fast_window": "短均线",
-                    "slow_window": "长均线",
-                    "deep_pullback_pct": "回撤阈值",
-                    "total_return": "累计收益",
-                    "annualized_return": "年化收益",
-                    "max_drawdown": "最大回撤",
-                    "sharpe": "夏普",
-                    "trades": "交易次数",
-                    "latest_target_position": "最新目标仓位",
-                    "score": "综合分",
-                }
-            )
-            grid_display = format_percent_columns(grid_display, ["回撤阈值", "累计收益", "年化收益", "最大回撤", "最新目标仓位"])
-            grid_display["夏普"] = grid_display["夏普"].map(lambda value: f"{float(value):.2f}")
-            grid_display["综合分"] = grid_display["综合分"].map(lambda value: f"{float(value):.4f}")
-            st.dataframe(grid_display, hide_index=True, use_container_width=True)
-            st.caption("综合分用于排序，优先考虑年化收益、回撤、夏普和交易次数；它不是收益承诺，只是用来筛选值得继续观察的参数。")
+            parameter_grid = cached_parameter_grid(prices, config, float(initial_cash))
+            if parameter_grid.empty:
+                st.info("当前参数范围没有可用组合。")
+            else:
+                grid_display = parameter_grid.head(12).copy()
+                grid_display = grid_display.rename(
+                    columns={
+                        "fast_window": "短均线",
+                        "slow_window": "长均线",
+                        "deep_pullback_pct": "回撤阈值",
+                        "total_return": "累计收益",
+                        "annualized_return": "年化收益",
+                        "max_drawdown": "最大回撤",
+                        "sharpe": "夏普",
+                        "trades": "交易次数",
+                        "latest_target_position": "最新目标仓位",
+                        "score": "综合分",
+                    }
+                )
+                grid_display = format_percent_columns(grid_display, ["回撤阈值", "累计收益", "年化收益", "最大回撤", "最新目标仓位"])
+                grid_display["夏普"] = grid_display["夏普"].map(lambda value: f"{float(value):.2f}")
+                grid_display["综合分"] = grid_display["综合分"].map(lambda value: f"{float(value):.4f}")
+                st.dataframe(grid_display, hide_index=True, width="stretch")
+                st.caption("综合分用于排序，优先考虑年化收益、回撤、夏普和交易次数；它不是收益承诺，只是用来筛选值得继续观察的参数。")
 
         st.subheader("最近信号")
         recent_signal_events = signal_events.tail(15).copy()
         recent_signal_events["date"] = pd.to_datetime(recent_signal_events["date"]).dt.date
+        recent_signal_events["momentum_5d_display"] = recent_signal_events["momentum_5d"].map(
+            lambda value: pct(float(value)) if pd.notna(value) else "-"
+        )
         for horizon in [1, 5, 20, 60]:
             column = f"return_{horizon}d"
             if column in recent_signal_events.columns:
                 recent_signal_events[column] = recent_signal_events[column].map(lambda value: pct(float(value)) if pd.notna(value) else "-")
         recent_signal_events = recent_signal_events[
-            ["date", "close", "signal", "target_position", "return_1d", "return_5d", "return_20d", "return_60d"]
+            [
+                "date",
+                "close",
+                "signal",
+                "target_position",
+                "momentum_5d_display",
+                "return_1d",
+                "return_5d",
+                "return_20d",
+                "return_60d",
+                "reason",
+            ]
         ].rename(
             columns={
                 "date": "日期",
                 "close": "价格",
                 "signal": "信号",
                 "target_position": "目标仓位",
+                "momentum_5d_display": "近5日动量",
                 "return_1d": "后1日",
                 "return_5d": "后1周",
                 "return_20d": "后1月",
                 "return_60d": "后1季",
+                "reason": "判断原因",
             }
         )
         recent_signal_events["价格"] = recent_signal_events["价格"].map(lambda value: f"{float(value):.2f}")
         recent_signal_events["目标仓位"] = recent_signal_events["目标仓位"].map(lambda value: pct(float(value)))
-        st.dataframe(recent_signal_events, hide_index=True, use_container_width=True)
+        st.dataframe(recent_signal_events, hide_index=True, width="stretch")
 
     with trades_tab:
         if not trades.empty:
@@ -482,7 +522,7 @@ def render_dashboard() -> None:
                     "spread_cost": "价差成本",
                 }
             )
-            st.dataframe(recent_trades, hide_index=True, use_container_width=True)
+            st.dataframe(recent_trades, hide_index=True, width="stretch")
         else:
             st.info("当前参数下没有触发模拟调仓。")
 

@@ -25,6 +25,9 @@ def add_indicators(
 ) -> pd.DataFrame:
     frame = prices.copy()
     frame["return"] = frame["close"].pct_change().fillna(0)
+    frame["momentum_3d"] = frame["close"] / frame["close"].shift(3) - 1
+    frame["momentum_5d"] = frame["close"] / frame["close"].shift(5) - 1
+    frame["momentum_10d"] = frame["close"] / frame["close"].shift(10) - 1
     frame["ma_fast"] = frame["close"].rolling(fast_window, min_periods=fast_window).mean()
     frame["ma_slow"] = frame["close"].rolling(slow_window, min_periods=slow_window).mean()
     frame["rsi"] = relative_strength_index(frame["close"], rsi_window)
@@ -33,4 +36,6 @@ def add_indicators(
     frame["volatility"] = frame["return"].rolling(volatility_window, min_periods=volatility_window).std() * np.sqrt(252)
     frame["distance_to_fast_ma"] = frame["close"] / frame["ma_fast"] - 1
     frame["distance_to_slow_ma"] = frame["close"] / frame["ma_slow"] - 1
+    frame["ma_fast_slope_5d"] = frame["ma_fast"] / frame["ma_fast"].shift(5) - 1
+    frame["down_days_5"] = (frame["return"] < 0).rolling(5, min_periods=1).sum()
     return frame

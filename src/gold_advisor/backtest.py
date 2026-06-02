@@ -114,6 +114,11 @@ def run_strategy_backtest(
                 "ma_fast": row["ma_fast"],
                 "ma_slow": row["ma_slow"],
                 "volatility": row["volatility"],
+                "momentum_3d": row.get("momentum_3d"),
+                "momentum_5d": row.get("momentum_5d"),
+                "momentum_10d": row.get("momentum_10d"),
+                "ma_fast_slope_5d": row.get("ma_fast_slope_5d"),
+                "down_days_5": row.get("down_days_5"),
             }
         )
 

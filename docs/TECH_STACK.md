@@ -44,7 +44,7 @@ Python 业务层
 - `src/gold_advisor/strategy.py`：信号和目标仓位规则。
 - `src/gold_advisor/profiles.py`：策略风格配置，当前包括收益优先、均衡和风控优先。
 - `src/gold_advisor/backtest.py`：交易模拟、资金曲线、收益和回撤指标。
-- `src/gold_advisor/evaluation.py`：信号事后验证、滚动训练样本外验证和参数组合试跑；耗时评估由页面按钮手动触发，避免首屏加载时长时间等待。
+- `src/gold_advisor/evaluation.py`：买入动作事后验证、滚动训练样本外验证和参数组合试跑；耗时评估由页面按钮手动触发，避免首屏加载时长时间等待。
 
 ## 数据口径
 

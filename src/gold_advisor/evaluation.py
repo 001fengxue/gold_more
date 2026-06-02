@@ -30,24 +30,22 @@ def evaluate_forward_returns(
         volatility_window=config.volatility_window,
     )
     signals = generate_signals(indicators, config)
-    data = indicators.merge(
-        signals[["date", "signal", "target_position", "reason"]],
-        on="date",
-        how="left",
-    )
+    signal_columns = ["date", "signal", "target_position", "reason", "action", "buy_scale", "action_reason"]
+    data = indicators.merge(signals[signal_columns], on="date", how="left")
 
     for horizon in horizon_days:
         data[f"return_{horizon}d"] = data["close"].shift(-horizon) / data["close"] - 1
 
     summary_rows: list[dict[str, float | int | str]] = []
-    for signal, group in data.groupby("signal", sort=False):
+    for action, group in data.groupby("action", sort=False):
         for horizon in horizon_days:
             returns = group[f"return_{horizon}d"].dropna().astype(float)
             if returns.empty:
                 continue
             summary_rows.append(
                 {
-                    "signal": signal,
+                    "action": action,
+                    "avg_buy_scale": float(group["buy_scale"].mean()),
                     "horizon_days": horizon,
                     "samples": int(len(returns)),
                     "avg_return": float(returns.mean()),
@@ -223,11 +221,8 @@ def run_walk_forward_validation(
             volatility_window=trained_config.volatility_window,
         )
         signals = generate_signals(indicators, trained_config)
-        validation = indicators.merge(
-            signals[["date", "signal", "target_position", "reason"]],
-            on="date",
-            how="left",
-        ).iloc[start:end].copy()
+        signal_columns = ["date", "signal", "target_position", "reason", "action", "buy_scale", "action_reason"]
+        validation = indicators.merge(signals[signal_columns], on="date", how="left").iloc[start:end].copy()
 
         validation["train_start"] = train_prices["date"].iloc[0]
         validation["train_end"] = train_prices["date"].iloc[-1]

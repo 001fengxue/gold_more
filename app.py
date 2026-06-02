@@ -310,11 +310,12 @@ def render_dashboard() -> None:
     market_cols[1].metric("伦敦折算", f"{london_price:.2f}" if london_price is not None else "-")
     market_cols[2].metric("国内溢价", pct(premium) if premium is not None else "-")
 
-    signal_cols = st.columns(4)
-    signal_cols[0].metric("当前信号", str(latest["signal"]))
-    signal_cols[1].metric("目标仓位", f"{latest['target_position'] * 100:.0f}%")
-    signal_cols[2].metric("策略累计收益", pct(metric_value(comparison, "累计收益", "strategy")))
-    signal_cols[3].metric("最大回撤", pct(metric_value(comparison, "最大回撤", "strategy")))
+    signal_cols = st.columns(5)
+    signal_cols[0].metric("今日动作", str(latest["action"]))
+    signal_cols[1].metric("买入强度", f"{float(latest['buy_scale']):.2f}x")
+    signal_cols[2].metric("目标仓位", f"{latest['target_position'] * 100:.0f}%")
+    signal_cols[3].metric("策略累计收益", pct(metric_value(comparison, "累计收益", "strategy")))
+    signal_cols[4].metric("最大回撤", pct(metric_value(comparison, "最大回撤", "strategy")))
 
     refresh_note = "自动刷新已关闭" if refresh_seconds is None else f"自动刷新：{refresh_label}"
     st.caption(
@@ -427,9 +428,11 @@ def render_dashboard() -> None:
 
         with table_right:
             st.subheader("当前判断")
-            st.write(str(latest["reason"]))
+            st.write(str(latest["action_reason"]))
+            st.caption(f"持仓状态：{latest['signal']}；目标仓位：{latest['target_position'] * 100:.0f}%。{latest['reason']}")
             latest_factors = pd.DataFrame(
                 [
+                    {"因子": "买入强度", "数值": f"{float(latest['buy_scale']):.2f}x"},
                     {"因子": "RSI", "数值": f"{latest['rsi']:.1f}"},
                     {"因子": "阶段回撤", "数值": pct(float(latest["pullback"]))},
                     {"因子": "近5日动量", "数值": pct(float(latest["momentum_5d"])) if pd.notna(latest["momentum_5d"]) else "-"},
@@ -441,18 +444,20 @@ def render_dashboard() -> None:
             )
             st.dataframe(latest_factors, hide_index=True, width="stretch")
 
-        st.subheader("信号事后验证")
+        st.subheader("买入动作事后验证")
         if signal_summary.empty:
-            st.info("当前数据不足，暂时无法计算信号事后表现。")
+            st.info("当前数据不足，暂时无法计算买入动作事后表现。")
         else:
             signal_display = signal_summary.copy()
             signal_display["观察周期"] = signal_display["horizon_days"].map(horizon_label)
+            signal_display["avg_buy_scale"] = signal_display["avg_buy_scale"].map(lambda value: f"{float(value):.2f}x")
             signal_display = signal_display[
-                ["signal", "观察周期", "samples", "avg_return", "median_return", "win_rate", "best_return", "worst_return"]
+                ["action", "avg_buy_scale", "观察周期", "samples", "avg_return", "median_return", "win_rate", "best_return", "worst_return"]
             ]
             signal_display = signal_display.rename(
                 columns={
-                    "signal": "信号",
+                    "action": "动作",
+                    "avg_buy_scale": "平均强度",
                     "samples": "样本数",
                     "avg_return": "平均收益",
                     "median_return": "中位收益",
@@ -463,7 +468,7 @@ def render_dashboard() -> None:
             )
             signal_display = format_percent_columns(signal_display, ["平均收益", "中位收益", "上涨胜率", "最好", "最差"])
             st.dataframe(signal_display, hide_index=True, width="stretch")
-            st.caption("这里的验证方式是：在某一天只使用当天及以前数据生成信号，再观察之后 1日、1周、1月、1季 的价格变化。")
+            st.caption("这里的验证方式是：在某一天只使用当天及以前数据生成买入动作，再观察之后 1日、1周、1月、1季 的价格变化。")
 
         st.subheader("滚动训练样本外验证")
         run_walk_forward = st.button("运行滚动训练验证", width="stretch")
@@ -516,6 +521,8 @@ def render_dashboard() -> None:
                     wf_recent[column] = wf_recent[column].map(lambda value: pct(float(value)) if pd.notna(value) else "-")
             wf_recent["date"] = pd.to_datetime(wf_recent["date"]).dt.date
             wf_recent["target_position"] = wf_recent["target_position"].map(lambda value: pct(float(value)))
+            if "buy_scale" in wf_recent.columns:
+                wf_recent["buy_scale"] = wf_recent["buy_scale"].map(lambda value: f"{float(value):.2f}x")
             wf_recent["momentum_5d"] = wf_recent["momentum_5d"].map(lambda value: pct(float(value)) if pd.notna(value) else "-")
             wf_recent["momentum_10d"] = wf_recent["momentum_10d"].map(lambda value: pct(float(value)) if pd.notna(value) else "-")
             wf_recent["trained_pullback_pct"] = wf_recent["trained_pullback_pct"].map(lambda value: pct(float(value)))
@@ -523,6 +530,8 @@ def render_dashboard() -> None:
                 [
                     "date",
                     "close",
+                    "action",
+                    "buy_scale",
                     "signal",
                     "target_position",
                     "momentum_5d",
@@ -533,13 +542,16 @@ def render_dashboard() -> None:
                     "return_1d",
                     "return_5d",
                     "return_20d",
+                    "action_reason",
                     "reason",
                 ]
             ].rename(
                 columns={
                     "date": "日期",
                     "close": "价格",
-                    "signal": "样本外信号",
+                    "action": "样本外动作",
+                    "buy_scale": "买入强度",
+                    "signal": "持仓状态",
                     "target_position": "目标仓位",
                     "momentum_5d": "近5日动量",
                     "momentum_10d": "近10日动量",
@@ -549,7 +561,8 @@ def render_dashboard() -> None:
                     "return_1d": "后1日",
                     "return_5d": "后1周",
                     "return_20d": "后1月",
-                    "reason": "判断原因",
+                    "action_reason": "动作原因",
+                    "reason": "仓位原因",
                 }
             )
             wf_recent_display["价格"] = wf_recent_display["价格"].map(lambda value: f"{float(value):.2f}")
@@ -586,9 +599,10 @@ def render_dashboard() -> None:
                 st.dataframe(grid_display, hide_index=True, width="stretch")
                 st.caption("综合分用于排序，优先考虑年化收益、回撤、夏普和交易次数；它不是收益承诺，只是用来筛选值得继续观察的参数。")
 
-        st.subheader("最近信号")
+        st.subheader("最近动作")
         recent_signal_events = signal_events.tail(15).copy()
         recent_signal_events["date"] = pd.to_datetime(recent_signal_events["date"]).dt.date
+        recent_signal_events["buy_scale"] = recent_signal_events["buy_scale"].map(lambda value: f"{float(value):.2f}x")
         recent_signal_events["momentum_5d_display"] = recent_signal_events["momentum_5d"].map(
             lambda value: pct(float(value)) if pd.notna(value) else "-"
         )
@@ -600,6 +614,8 @@ def render_dashboard() -> None:
             [
                 "date",
                 "close",
+                "action",
+                "buy_scale",
                 "signal",
                 "target_position",
                 "momentum_5d_display",
@@ -607,20 +623,24 @@ def render_dashboard() -> None:
                 "return_5d",
                 "return_20d",
                 "return_60d",
+                "action_reason",
                 "reason",
             ]
         ].rename(
             columns={
                 "date": "日期",
                 "close": "价格",
-                "signal": "信号",
+                "action": "今日动作",
+                "buy_scale": "买入强度",
+                "signal": "持仓状态",
                 "target_position": "目标仓位",
                 "momentum_5d_display": "近5日动量",
                 "return_1d": "后1日",
                 "return_5d": "后1周",
                 "return_20d": "后1月",
                 "return_60d": "后1季",
-                "reason": "判断原因",
+                "action_reason": "动作原因",
+                "reason": "仓位原因",
             }
         )
         recent_signal_events["价格"] = recent_signal_events["价格"].map(lambda value: f"{float(value):.2f}")
@@ -641,7 +661,7 @@ def render_dashboard() -> None:
                     "side": "方向",
                     "price": "价格",
                     "grams": "克数",
-                    "signal": "信号",
+                    "signal": "持仓状态",
                     "target_position": "目标仓位",
                     "spread_cost": "价差成本",
                 }

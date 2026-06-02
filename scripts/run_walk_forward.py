@@ -92,9 +92,13 @@ def main() -> None:
     ]:
         if column in last_month.columns:
             last_month[column] = last_month[column].map(_format_percent)
+    if "buy_scale" in last_month.columns:
+        last_month["buy_scale"] = last_month["buy_scale"].map(lambda value: f"{float(value):.2f}x")
     columns = [
         "date",
         "close",
+        "action",
+        "buy_scale",
         "signal",
         "target_position",
         "momentum_5d",
@@ -105,6 +109,7 @@ def main() -> None:
         "return_1d",
         "return_5d",
         "return_20d",
+        "action_reason",
         "reason",
     ]
     print(last_month[columns].to_string(index=False))

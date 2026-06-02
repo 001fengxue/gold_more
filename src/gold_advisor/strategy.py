@@ -23,7 +23,7 @@ class StrategyConfig:
     spread_bps: float = 35
 
 
-def _target_for_row(row: pd.Series, config: StrategyConfig) -> tuple[str, float, str]:
+def _state_for_row(row: pd.Series, config: StrategyConfig) -> tuple[str, float, str]:
     if pd.isna(row["ma_slow"]) or pd.isna(row["ma_fast"]):
         return "观望", config.min_position, "长周期指标尚未形成，先保持低仓位。"
 
@@ -73,10 +73,46 @@ def _target_for_row(row: pd.Series, config: StrategyConfig) -> tuple[str, float,
     return "防守观望", config.min_position, "趋势偏弱，先控制仓位等待更清晰的价格结构。"
 
 
+def _action_for_row(row: pd.Series, config: StrategyConfig) -> tuple[str, float, str]:
+    if pd.isna(row["ma_slow"]) or pd.isna(row["ma_fast"]):
+        return "暂停买入", 0.0, "长周期指标尚未形成，暂不新增买入。"
+
+    fast_slope = row.get("ma_fast_slope_5d", 0)
+    momentum_3d = row.get("momentum_3d", 0)
+    momentum_5d = row.get("momentum_5d", 0)
+    momentum_10d = row.get("momentum_10d", 0)
+    down_days_5 = row.get("down_days_5", 0)
+    daily_return = row.get("return", 0)
+
+    trend_up = row["ma_fast"] > row["ma_slow"] and fast_slope >= -0.001
+    deep_pullback = row["pullback"] <= -config.deep_pullback_pct
+    cooled_down = row["rsi"] <= config.buy_rsi
+    overheated = row["rsi"] >= config.heat_rsi and row["distance_to_fast_ma"] > 0.05
+    sharp_fall = momentum_5d <= -0.025 or momentum_10d <= -0.040 or down_days_5 >= 4
+    rebound_probe = daily_return >= 0.015 or (momentum_3d > 0.010 and down_days_5 <= 3)
+
+    if overheated:
+        return "暂停买入", 0.0, "价格偏热，暂停新增买入；已有仓位按目标仓位管理。"
+    if sharp_fall:
+        return "暂停买入", 0.0, "短线下跌仍重，先不接飞刀，等止跌或放量反弹。"
+    if trend_up and deep_pullback and cooled_down:
+        return "加倍买入", 1.5, "长期趋势仍在，回撤后跌势放缓，可比平时多买。"
+    if trend_up and cooled_down:
+        return "正常买入", 1.0, "趋势偏强且动量降温，按计划正常买入。"
+    if deep_pullback and rebound_probe:
+        return "小额试探", 0.25, "大跌后出现反弹，但趋势还没修复，只适合小额试探。"
+    if deep_pullback:
+        return "暂不加仓", 0.0, "价格便宜但结构未稳，保留核心仓，不新增买入。"
+    if trend_up:
+        return "小额定投", 0.5, "趋势仍在但性价比一般，只做小额定投。"
+    return "暂停买入", 0.0, "趋势偏弱，暂停新增买入。"
+
+
 def generate_signals(indicator_frame: pd.DataFrame, config: StrategyConfig) -> pd.DataFrame:
     records = []
     for _, row in indicator_frame.iterrows():
-        signal, target_position, reason = _target_for_row(row, config)
+        signal, target_position, reason = _state_for_row(row, config)
+        action, buy_scale, action_reason = _action_for_row(row, config)
         records.append(
             {
                 "date": row["date"],
@@ -84,6 +120,9 @@ def generate_signals(indicator_frame: pd.DataFrame, config: StrategyConfig) -> p
                 "signal": signal,
                 "target_position": target_position,
                 "reason": reason,
+                "action": action,
+                "buy_scale": buy_scale,
+                "action_reason": action_reason,
                 "rsi": row["rsi"],
                 "pullback": row["pullback"],
                 "ma_fast": row["ma_fast"],

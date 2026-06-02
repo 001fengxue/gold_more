@@ -51,7 +51,8 @@ def run_strategy_backtest(
         volatility_window=config.volatility_window,
     )
     signals = generate_signals(indicators, config)
-    data = indicators.merge(signals[["date", "signal", "target_position", "reason"]], on="date", how="left")
+    signal_columns = ["date", "signal", "target_position", "reason", "action", "buy_scale", "action_reason"]
+    data = indicators.merge(signals[signal_columns], on="date", how="left")
 
     cash = initial_cash
     grams = 0.0
@@ -109,6 +110,9 @@ def run_strategy_backtest(
                 "target_position": target_position,
                 "signal": row["signal"],
                 "reason": row["reason"],
+                "action": row["action"],
+                "buy_scale": row["buy_scale"],
+                "action_reason": row["action_reason"],
                 "rsi": row["rsi"],
                 "pullback": row["pullback"],
                 "ma_fast": row["ma_fast"],

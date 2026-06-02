@@ -36,10 +36,10 @@ def main() -> None:
     print(f"策略风格: {args.profile}")
     print(f"区间: {prices['date'].iloc[0].date()} 至 {prices['date'].iloc[-1].date()}")
     print()
-    print("信号事后表现:")
+    print("买入动作事后表现:")
     for _, row in signal_summary.iterrows():
         print(
-            f"{row['signal']} / {int(row['horizon_days'])}日: "
+            f"{row['action']} ({row['avg_buy_scale']:.2f}x) / {int(row['horizon_days'])}日: "
             f"样本 {int(row['samples'])}, "
             f"平均 {_format_percent(row['avg_return'])}, "
             f"胜率 {_format_percent(row['win_rate'])}, "

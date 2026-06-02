@@ -23,7 +23,7 @@ from gold_advisor.data import (
     load_csv_prices,
     load_prices,
 )
-from gold_advisor.evaluation import evaluate_forward_returns, run_parameter_grid
+from gold_advisor.evaluation import evaluate_forward_returns, run_parameter_grid, run_walk_forward_validation
 from gold_advisor.market import (
     LondonGoldConversion,
     convert_cny_per_gram_to_london_gold,
@@ -67,6 +67,15 @@ def cached_forward_evaluation(prices: pd.DataFrame, config: StrategyConfig) -> t
 @st.cache_data(show_spinner=False, ttl=900)
 def cached_parameter_grid(prices: pd.DataFrame, config: StrategyConfig, initial_cash: float) -> pd.DataFrame:
     return run_parameter_grid(prices, config, initial_cash=initial_cash)
+
+
+@st.cache_data(show_spinner=False, ttl=900)
+def cached_walk_forward_validation(
+    prices: pd.DataFrame,
+    config: StrategyConfig,
+    initial_cash: float,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, float], pd.DataFrame]:
+    return run_walk_forward_validation(prices, config, initial_cash=initial_cash)
 
 
 def pct(value: float) -> str:
@@ -431,6 +440,97 @@ def render_dashboard() -> None:
             signal_display = format_percent_columns(signal_display, ["平均收益", "中位收益", "上涨胜率", "最好", "最差"])
             st.dataframe(signal_display, hide_index=True, width="stretch")
             st.caption("这里的验证方式是：在某一天只使用当天及以前数据生成信号，再观察之后 1日、1周、1月、1季 的价格变化。")
+
+        st.subheader("滚动训练样本外验证")
+        run_walk_forward = st.button("运行滚动训练验证", width="stretch")
+        if not run_walk_forward:
+            st.info("滚动训练会反复用过去三年选参数，再验证之后约一个月，比较耗时，点击按钮后运行。")
+        else:
+            with st.spinner("正在滚动训练并验证最近半年..."):
+                wf_equity, wf_trades, wf_periods, wf_metrics, wf_benchmark = cached_walk_forward_validation(
+                    prices,
+                    config,
+                    float(initial_cash),
+                )
+
+            benchmark_return = wf_benchmark["equity"].iloc[-1] / wf_benchmark["equity"].iloc[0] - 1
+            wf_cols = st.columns(5)
+            wf_cols[0].metric("样本外累计收益", pct(float(wf_metrics["total_return"])))
+            wf_cols[1].metric("同期买入持有", pct(float(benchmark_return)))
+            wf_cols[2].metric("样本外最大回撤", pct(float(wf_metrics["max_drawdown"])))
+            wf_cols[3].metric("样本外夏普", f"{float(wf_metrics['sharpe']):.2f}")
+            wf_cols[4].metric("样本外交易次数", f"{int(wf_metrics['trades'])}")
+
+            period_display = wf_periods.copy()
+            for column in ["validation_start", "validation_end", "train_start", "train_end"]:
+                period_display[column] = pd.to_datetime(period_display[column]).dt.date
+            period_display = period_display.rename(
+                columns={
+                    "validation_start": "验证开始",
+                    "validation_end": "验证结束",
+                    "train_start": "训练开始",
+                    "train_end": "训练结束",
+                    "fast_window": "短均线",
+                    "slow_window": "长均线",
+                    "deep_pullback_pct": "回撤阈值",
+                    "train_score": "训练分",
+                    "train_total_return": "训练收益",
+                    "train_max_drawdown": "训练回撤",
+                    "train_sharpe": "训练夏普",
+                    "validation_rows": "验证天数",
+                }
+            )
+            period_display = format_percent_columns(period_display, ["回撤阈值", "训练收益", "训练回撤"])
+            period_display["训练夏普"] = period_display["训练夏普"].map(lambda value: f"{float(value):.2f}")
+            period_display["训练分"] = period_display["训练分"].map(lambda value: f"{float(value):.4f}")
+            st.dataframe(period_display, hide_index=True, width="stretch")
+
+            wf_recent = wf_equity[wf_equity["date"] >= wf_equity["date"].max() - pd.Timedelta(days=35)].copy()
+            for horizon in [1, 5, 20]:
+                column = f"return_{horizon}d"
+                if column in wf_recent.columns:
+                    wf_recent[column] = wf_recent[column].map(lambda value: pct(float(value)) if pd.notna(value) else "-")
+            wf_recent["date"] = pd.to_datetime(wf_recent["date"]).dt.date
+            wf_recent["target_position"] = wf_recent["target_position"].map(lambda value: pct(float(value)))
+            wf_recent["momentum_5d"] = wf_recent["momentum_5d"].map(lambda value: pct(float(value)) if pd.notna(value) else "-")
+            wf_recent["momentum_10d"] = wf_recent["momentum_10d"].map(lambda value: pct(float(value)) if pd.notna(value) else "-")
+            wf_recent["trained_pullback_pct"] = wf_recent["trained_pullback_pct"].map(lambda value: pct(float(value)))
+            wf_recent_display = wf_recent[
+                [
+                    "date",
+                    "close",
+                    "signal",
+                    "target_position",
+                    "momentum_5d",
+                    "momentum_10d",
+                    "trained_fast_window",
+                    "trained_slow_window",
+                    "trained_pullback_pct",
+                    "return_1d",
+                    "return_5d",
+                    "return_20d",
+                    "reason",
+                ]
+            ].rename(
+                columns={
+                    "date": "日期",
+                    "close": "价格",
+                    "signal": "样本外信号",
+                    "target_position": "目标仓位",
+                    "momentum_5d": "近5日动量",
+                    "momentum_10d": "近10日动量",
+                    "trained_fast_window": "训练短均线",
+                    "trained_slow_window": "训练长均线",
+                    "trained_pullback_pct": "训练回撤阈值",
+                    "return_1d": "后1日",
+                    "return_5d": "后1周",
+                    "return_20d": "后1月",
+                    "reason": "判断原因",
+                }
+            )
+            wf_recent_display["价格"] = wf_recent_display["价格"].map(lambda value: f"{float(value):.2f}")
+            st.dataframe(wf_recent_display, hide_index=True, width="stretch")
+            st.caption("滚动训练只用验证开始日前的数据选参数；表中的后续收益只用于事后检验，不参与当日信号。")
 
         st.subheader("参数组合试跑")
         run_grid_search = st.button("运行参数组合试跑", width="stretch")

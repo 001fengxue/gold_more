@@ -23,6 +23,7 @@ streamlit run app.py
 python scripts\run_backtest.py --source demo
 python scripts\run_backtest.py --source akshare --symbol Au99.99
 python scripts\run_model_evaluation.py --source akshare --symbol Au99.99
+python scripts\run_walk_forward.py --source akshare --symbol Au99.99 --overlay-delayed-quote
 ```
 
 ## 当前策略

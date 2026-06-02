@@ -21,9 +21,9 @@ streamlit run app.py
 
 ```powershell
 python scripts\run_backtest.py --source demo
-python scripts\run_backtest.py --source akshare --symbol Au99.99
-python scripts\run_model_evaluation.py --source akshare --symbol Au99.99
-python scripts\run_walk_forward.py --source akshare --symbol Au99.99 --overlay-delayed-quote
+python scripts\run_backtest.py --source akshare --symbol Au99.99 --profile 收益优先
+python scripts\run_model_evaluation.py --source akshare --symbol Au99.99 --profile 收益优先
+python scripts\run_walk_forward.py --source akshare --symbol Au99.99 --overlay-delayed-quote --profile 收益优先
 ```
 
 ## 当前策略
@@ -37,7 +37,7 @@ python scripts\run_walk_forward.py --source akshare --symbol Au99.99 --overlay-d
 
 后续可以加入宏观因子、参数寻优、滚动样本外测试和模型预测，但需要先把“回测是否可信”立住。
 
-页面已经加入国内金价 K 线、模拟买卖点、伦敦金外部实时图、信号事后验证和参数组合试跑。
+页面已经加入国内金价 K 线、模拟买卖点、伦敦金外部实时图、信号事后验证、滚动训练样本外验证和参数组合试跑。默认策略风格为 `收益优先`，会保留约 95% 黄金核心仓位。
 
 ## 技术栈与价格口径
 

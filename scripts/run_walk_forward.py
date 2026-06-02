@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from gold_advisor.data import apply_latest_quote, get_sge_delayed_quote, load_prices
 from gold_advisor.evaluation import run_walk_forward_validation
+from gold_advisor.profiles import PROFILE_ORDER, apply_profile
 from gold_advisor.strategy import StrategyConfig
 
 
@@ -31,13 +32,14 @@ def main() -> None:
     parser.add_argument("--validation-window", type=int, default=20)
     parser.add_argument("--max-validation-rows", type=int, default=126)
     parser.add_argument("--overlay-delayed-quote", action="store_true")
+    parser.add_argument("--profile", choices=PROFILE_ORDER, default="收益优先")
     args = parser.parse_args()
 
     prices, info = load_prices(args.source, symbol=args.symbol, csv_file=args.csv)
     if args.overlay_delayed_quote and args.source == "akshare":
         prices = apply_latest_quote(prices, get_sge_delayed_quote(args.symbol))
 
-    config = StrategyConfig(spread_bps=args.spread_bps)
+    config = apply_profile(StrategyConfig(spread_bps=args.spread_bps), args.profile)
     equity, trades, periods, metrics, benchmark = run_walk_forward_validation(
         prices,
         config,
@@ -48,6 +50,7 @@ def main() -> None:
     )
 
     print(f"数据源: {info.name} - {info.description}")
+    print(f"策略风格: {args.profile}")
     print(f"样本外区间: {equity['date'].iloc[0].date()} 至 {equity['date'].iloc[-1].date()}")
     print(f"训练窗口: {args.train_window} 个交易日; 每段验证: {args.validation_window} 个交易日")
     print()

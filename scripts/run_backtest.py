@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from gold_advisor.backtest import compare_metrics, run_buy_hold_benchmark, run_strategy_backtest
 from gold_advisor.data import load_prices
+from gold_advisor.profiles import PROFILE_ORDER, apply_profile
 from gold_advisor.strategy import StrategyConfig
 
 
@@ -23,15 +24,17 @@ def main() -> None:
     parser.add_argument("--csv", type=Path)
     parser.add_argument("--initial-cash", type=float, default=100_000)
     parser.add_argument("--spread-bps", type=float, default=35)
+    parser.add_argument("--profile", choices=PROFILE_ORDER, default="收益优先")
     args = parser.parse_args()
 
     prices, info = load_prices(args.source, symbol=args.symbol, csv_file=args.csv)
-    config = StrategyConfig(spread_bps=args.spread_bps)
+    config = apply_profile(StrategyConfig(spread_bps=args.spread_bps), args.profile)
     strategy_equity, trades, metrics = run_strategy_backtest(prices, config, initial_cash=args.initial_cash)
     benchmark = run_buy_hold_benchmark(prices, spread_bps=args.spread_bps, initial_cash=args.initial_cash)
     comparison = compare_metrics(strategy_equity, benchmark)
 
     print(f"数据源: {info.name} - {info.description}")
+    print(f"策略风格: {args.profile}")
     print(f"区间: {prices['date'].iloc[0].date()} 至 {prices['date'].iloc[-1].date()}")
     print(f"最新信号: {strategy_equity.iloc[-1]['signal']}")
     print(f"目标仓位: {strategy_equity.iloc[-1]['target_position'] * 100:.0f}%")

@@ -30,6 +30,7 @@ from gold_advisor.market import (
     convert_london_gold_to_cny_per_gram,
     get_london_gold_conversion,
 )
+from gold_advisor.profiles import PROFILE_ORDER, apply_profile, profile_defaults
 from gold_advisor.strategy import StrategyConfig
 
 
@@ -220,6 +221,8 @@ with st.sidebar:
     use_delayed_quote = st.checkbox("使用上金所延时价更新当日", value=source == "akshare", disabled=source != "akshare")
     refresh_label = st.selectbox("自动刷新", ["关闭", "30 秒", "1 分钟", "5 分钟", "15 分钟"], index=2)
     refresh_seconds = {"关闭": None, "30 秒": 30, "1 分钟": 60, "5 分钟": 300, "15 分钟": 900}[refresh_label]
+    strategy_profile = st.selectbox("策略风格", list(PROFILE_ORDER), index=0)
+    defaults = profile_defaults(strategy_profile)
     show_external_live_chart = st.checkbox("显示伦敦金实时图", value=True)
     if st.button("刷新数据", width="stretch"):
         st.cache_data.clear()
@@ -228,10 +231,29 @@ with st.sidebar:
 
     initial_cash = st.number_input("初始资金", min_value=1_000, max_value=10_000_000, value=100_000, step=10_000)
     spread_bps = st.slider("买卖价差 bps", min_value=0, max_value=200, value=35, step=5)
-    fast_window = st.slider("短均线", min_value=5, max_value=60, value=20, step=5)
-    slow_window = st.slider("长均线", min_value=60, max_value=260, value=120, step=10)
-    deep_pullback_pct = st.slider("深度回撤", min_value=0.03, max_value=0.20, value=0.08, step=0.01)
-    rebalance_threshold = st.slider("调仓阈值", min_value=0.01, max_value=0.20, value=0.05, step=0.01)
+    fast_window = st.slider("短均线", min_value=5, max_value=60, value=int(defaults["fast_window"]), step=5, key=f"fast_window_{strategy_profile}")
+    slow_window = st.slider("长均线", min_value=60, max_value=260, value=int(defaults["slow_window"]), step=10, key=f"slow_window_{strategy_profile}")
+    deep_pullback_pct = st.slider(
+        "深度回撤",
+        min_value=0.03,
+        max_value=0.20,
+        value=float(defaults["deep_pullback_pct"]),
+        step=0.01,
+        key=f"pullback_{strategy_profile}",
+    )
+    rebalance_threshold = st.slider(
+        "调仓阈值",
+        min_value=0.01,
+        max_value=0.20,
+        value=float(defaults["rebalance_threshold"]),
+        step=0.01,
+        key=f"rebalance_{strategy_profile}",
+    )
+    st.caption(
+        f"仓位范围：底仓 {defaults['min_position'] * 100:.0f}% / "
+        f"趋势仓 {defaults['neutral_position'] * 100:.0f}% / "
+        f"进攻仓 {defaults['max_position'] * 100:.0f}%"
+    )
 
 
 @st.fragment(run_every=refresh_seconds)
@@ -264,11 +286,12 @@ def render_dashboard() -> None:
     except Exception as exc:
         london_note = f"伦敦金接口暂不可用。原因：{exc}"
 
-    config = StrategyConfig(
+    config = apply_profile(
+        StrategyConfig(spread_bps=spread_bps),
+        strategy_profile,
         fast_window=fast_window,
         slow_window=slow_window,
         deep_pullback_pct=deep_pullback_pct,
-        spread_bps=spread_bps,
         rebalance_threshold=rebalance_threshold,
     )
 
@@ -296,7 +319,8 @@ def render_dashboard() -> None:
     refresh_note = "自动刷新已关闭" if refresh_seconds is None else f"自动刷新：{refresh_label}"
     st.caption(
         f"数据源：{info.name}，区间：{prices['date'].iloc[0].date()} 至 {prices['date'].iloc[-1].date()}。"
-        f"{quote_note} {london_note} {refresh_note}。本系统只用于研究和记录，不构成投资建议。"
+        f"策略风格：{strategy_profile}。{quote_note} {london_note} {refresh_note}。"
+        "本系统只用于研究和记录，不构成投资建议。"
     )
 
     overview_tab, chart_tab, evaluation_tab, trades_tab = st.tabs(["总览", "行情图", "模型评估", "交易记录"])

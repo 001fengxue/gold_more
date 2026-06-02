@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from gold_advisor.evaluation import evaluate_forward_returns, run_parameter_grid
 from gold_advisor.data import load_prices
+from gold_advisor.profiles import PROFILE_ORDER, apply_profile
 from gold_advisor.strategy import StrategyConfig
 
 
@@ -23,14 +24,16 @@ def main() -> None:
     parser.add_argument("--csv", type=Path)
     parser.add_argument("--initial-cash", type=float, default=100_000)
     parser.add_argument("--spread-bps", type=float, default=35)
+    parser.add_argument("--profile", choices=PROFILE_ORDER, default="收益优先")
     args = parser.parse_args()
 
     prices, info = load_prices(args.source, symbol=args.symbol, csv_file=args.csv)
-    config = StrategyConfig(spread_bps=args.spread_bps)
+    config = apply_profile(StrategyConfig(spread_bps=args.spread_bps), args.profile)
     _, signal_summary = evaluate_forward_returns(prices, config)
     grid = run_parameter_grid(prices, config, initial_cash=args.initial_cash)
 
     print(f"数据源: {info.name} - {info.description}")
+    print(f"策略风格: {args.profile}")
     print(f"区间: {prices['date'].iloc[0].date()} 至 {prices['date'].iloc[-1].date()}")
     print()
     print("信号事后表现:")

@@ -44,20 +44,31 @@ def _target_for_row(row: pd.Series, config: StrategyConfig) -> tuple[str, float,
         or (row["distance_to_fast_ma"] <= -0.025 and fast_slope < -0.003)
     )
     stabilizing = momentum_3d > 0 and momentum_5d > -0.020 and down_days_5 <= 3
+    yield_first = config.min_position >= 0.70
 
     if overheated:
         return "减仓", config.reduce_position, "RSI 偏高且价格明显高于短均线，优先锁定风险。"
     if deep_pullback and falling_risk:
+        if yield_first:
+            return "核心持有", config.min_position, "收益优先模式保留高底仓；短线仍弱，暂不继续追加。"
         return "等待企稳", config.min_position, "价格仍处在短期下跌结构里，先把便宜和可买分开，等待企稳信号。"
     if trend_up and deep_pullback and cooled_down:
+        if yield_first:
+            return "积极加仓", config.max_position, "长期趋势仍在且短期跌势放缓，收益优先模式提高到进攻仓位。"
         return "小额买入", min(config.max_position, config.neutral_position + 0.15), "长期趋势仍在且短期跌势放缓，可以小额分批增加仓位。"
     if trend_up and cooled_down:
-        return "小额买入", min(config.max_position, config.neutral_position + 0.15), "趋势偏强且动量降温，适合增加积存。"
+        return "小额买入", min(config.max_position, config.neutral_position + 0.15), "趋势偏强且动量降温，适合分批增加积存。"
     if trend_up:
+        if yield_first:
+            return "趋势持有", config.neutral_position, "价格处于上行趋势，收益优先模式维持较高仓位。"
         return "持有", config.neutral_position, "价格处于上行趋势，但买入性价比一般。"
     if deep_pullback and cooled_down and stabilizing:
+        if yield_first:
+            return "核心持有", config.min_position, "价格有初步反弹但趋势尚未修复，保留核心仓位等待确认。"
         return "低仓观察", config.min_position, "价格已有初步反弹，但趋势尚未修复，先观察，不因反弹直接加仓。"
     if deep_pullback and cooled_down:
+        if yield_first:
+            return "核心持有", config.min_position, "回撤较深但趋势仍弱，收益优先模式保留核心仓位。"
         return "等待企稳", config.min_position, "回撤较深但趋势仍弱，暂不把下跌中的低价直接当成买点。"
     return "防守观望", config.min_position, "趋势偏弱，先控制仓位等待更清晰的价格结构。"
 
